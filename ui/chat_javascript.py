@@ -7,6 +7,17 @@ let currentThreadId = null;
 let isTyping = false;
 let sendingMessage = false;
 
+// Handle authentication errors
+function handleAuthError(response) {
+    if (response.status === 401) {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        window.location.href = '/';
+        return true;
+    }
+    return false;
+}
+
 // Utility function to scroll chat to bottom with proper timing
 function scrollChatToBottom() {
     const messagesContainer = document.getElementById('chat-messages');
@@ -66,9 +77,22 @@ async function sendMessage() {
     addMessage(message, 'user');
     
     try {
+        const token = localStorage.getItem('authToken');
+        console.log('🔧 DEBUG: Token from localStorage:', token ? `${token.substring(0, 20)}...` : 'NULL');
+        
+        if (!token) {
+            console.error('❌ No token found in localStorage!');
+            addMessage('❌ Authentication required. Please refresh the page and log in again.', 'assistant');
+            window.location.href = '/';
+            return;
+        }
+        
         const response = await fetch('/send_message', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({
                 message: message,
                 thread_id: currentThreadId,
@@ -77,29 +101,62 @@ async function sendMessage() {
             })
         });
         
+        console.log('🔧 DEBUG: Response status:', response.status);
+        console.log('🔧 DEBUG: Response headers:', [...response.headers.entries()]);
+        
+        // Add comprehensive response debugging
+        console.log('🔧 DEBUG: Response ok:', response.ok);
+        console.log('🔧 DEBUG: Response statusText:', response.statusText);
+        
+        if (response.status === 401) {
+            console.error('❌ 401 Unauthorized - Token may be expired or invalid');
+            console.log('🔧 DEBUG: Clearing invalid token and redirecting to login...');
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('user');
+            addMessage('❌ Your session has expired. Please log in again.', 'assistant');
+            setTimeout(() => window.location.href = '/', 2000);
+            return;
+        }
+        
+        if (handleAuthError(response)) return;
+        
         const data = await response.json();
         
+        // Add comprehensive data debugging
+        console.log('🔧 DEBUG: Response data parsed successfully:', data);
+        console.log('🔧 DEBUG: data.success:', data.success);
+        console.log('🔧 DEBUG: data.response:', data.response);
+        console.log('🔧 DEBUG: data.thread_id:', data.thread_id);
+        console.log('🔧 DEBUG: data.memory_context:', data.memory_context);
+        console.log('🔧 DEBUG: data.error:', data.error);
+        
         if (data.success) {
+            console.log('🔧 DEBUG: ✅ Data success is true, processing response...');
             currentThreadId = data.thread_id;
             updateThreadTitle();
             
             if (data.memory_context && data.memory_context.length > 0) {
+                console.log('🔧 DEBUG: 🧠 Adding message with memories injected:', data.memory_context.length, 'memories');
                 addMessageWithMemoriesInjected(data.response, 'assistant', data.memory_context);
                 
                 // Trigger memory animation
-                const activatedMemoryIds = data.memory_context.map(ctx => ctx.memory.id);
+                const activatedMemoryIds = data.memory_context.map(ctx => ctx.id || ctx.memory?.id).filter(id => id);
                 setTimeout(() => {
                     if (memoryNetwork && networkData.nodes.length > 0) {
                         animateMemoryActivation(activatedMemoryIds);
                     }
                 }, 200);
             } else {
+                console.log('🔧 DEBUG: 💬 Adding regular message (no memories):', data.response);
                 addMessage(data.response, 'assistant');
             }
         } else if (response.status !== 409) {
+            console.log('🔧 DEBUG: ❌ Data success is false, adding error message');
             addMessage('Sorry, I encountered an error. Please try again.', 'assistant');
         }
     } catch (error) {
+        console.error('🔧 DEBUG: ❌ Exception in sendMessage:', error);
+        console.error('🔧 DEBUG: ❌ Stack trace:', error.stack);
         addMessage('Sorry, I encountered an error. Please try again.', 'assistant');
     } finally {
         // Re-enable UI
@@ -117,10 +174,14 @@ async function sendMessage() {
 
 // Add message to chat with standard chatbot protocol
 function addMessage(content, sender) {
-    const messagesContainer = document.getElementById('chat-messages');
-    const emptyState = messagesContainer.querySelector('.empty-state');
+    console.log('🔧 DEBUG: 📝 addMessage called with:', { content, sender });
     
+    const messagesContainer = document.getElementById('chat-messages');
+    console.log('🔧 DEBUG: 📋 messagesContainer found:', messagesContainer ? 'YES' : 'NO');
+    
+    const emptyState = messagesContainer.querySelector('.empty-state');
     if (emptyState) {
+        console.log('🔧 DEBUG: 🗑️ Removing empty state');
         emptyState.remove();
     }
     
@@ -131,17 +192,25 @@ function addMessage(content, sender) {
         <p class="message-content">${content}</p>
     `;
     
+    console.log('🔧 DEBUG: 📱 Adding message to container');
+    
     // Standard chat protocol: all messages go to the bottom
     messagesContainer.appendChild(messageDiv);
     scrollChatToBottom();
+    
+    console.log('🔧 DEBUG: ✅ Message added successfully');
 }
 
 // Add message with memories injected info
 function addMessageWithMemoriesInjected(content, sender, memoryContext) {
-    const messagesContainer = document.getElementById('chat-messages');
-    const emptyState = messagesContainer.querySelector('.empty-state');
+    console.log('🔧 DEBUG: 🧠 addMessageWithMemoriesInjected called with:', { content, sender, memoryContext });
     
+    const messagesContainer = document.getElementById('chat-messages');
+    console.log('🔧 DEBUG: 📋 messagesContainer found:', messagesContainer ? 'YES' : 'NO');
+    
+    const emptyState = messagesContainer.querySelector('.empty-state');
     if (emptyState) {
+        console.log('🔧 DEBUG: 🗑️ Removing empty state');
         emptyState.remove();
     }
     
@@ -158,7 +227,16 @@ function addMessageWithMemoriesInjected(content, sender, memoryContext) {
     memoriesHtml += `<div class="memories-injected-content" id="${memoryId}">`;
     if (memoryContext && memoryContext.length > 0) {
         memoryContext.forEach(memory => {
-            memoriesHtml += `<div class="memories-injected-item">${memory.memory.content}<span class="memories-injected-score">(Score: ${memory.relevance_score.toFixed(2)})</span></div>`;
+            // Skip if memory is null or undefined
+            if (!memory) {
+                console.log('🔧 DEBUG: ⚠️ Skipping null/undefined memory');
+                return;
+            }
+            
+            // Handle both user-specific memories (direct) and global memories (nested)
+            const content = memory.content || memory.memory?.content || 'Unknown memory content';
+            const score = memory.relevance_score || memory.score || 0;
+            memoriesHtml += `<div class="memories-injected-item">${content}<span class="memories-injected-score">(Score: ${score.toFixed ? score.toFixed(2) : score})</span></div>`;
         });
     } else {
         memoriesHtml += '<div class="memories-injected-item">No relevant memories were injected for this prompt.</div>';
@@ -173,6 +251,8 @@ function addMessageWithMemoriesInjected(content, sender, memoryContext) {
     // Standard chat protocol: all messages go to the bottom
     messagesContainer.appendChild(messageDiv);
     scrollChatToBottom();
+    
+    console.log('🔧 DEBUG: ✅ Message with memories added successfully');
 }
 
 // Thread management functions
@@ -180,9 +260,13 @@ async function newThread() {
     console.log('🔥 Creating new thread...');
     
     // Create a new empty thread
+    const token = localStorage.getItem('authToken');
     const response = await fetch('/chat_history/new', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        }
     });
     
     if (response.ok) {
@@ -202,6 +286,12 @@ async function newThread() {
             
             focusChatInput();
             console.log('🔥 New thread created:', currentThreadId);
+            
+            // Ensure memory network stays loaded when switching threads
+            if (typeof window.refreshMemoryNetwork === 'function') {
+                console.log('🧠 Refreshing memory network for new thread...');
+                window.refreshMemoryNetwork();
+            }
         }
     } else {
         console.error('Failed to create new thread');
@@ -211,8 +301,12 @@ async function newThread() {
 async function deleteThread(threadId, event) {
     event.stopPropagation(); // Prevent thread selection
     try {
+        const token = localStorage.getItem('authToken');
         const response = await fetch(`/chat_history/${threadId}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
         });
         if (response.ok) {
             await loadThreadListAndLast(true);
@@ -247,9 +341,13 @@ async function endThread() {
         console.log('🔧 DEBUG: 📡 Making request to /end_thread endpoint');
         console.log('🔧 DEBUG: 📦 Request payload:', JSON.stringify({ thread_id: currentThreadId }));
         
+        const token = localStorage.getItem('authToken');
         const response = await fetch('/end_thread', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({ thread_id: currentThreadId })
         });
 
@@ -345,6 +443,11 @@ function toggleMemoryInjection(memoryId) {
     }
 }
 
+// Navigate to dashboard
+function goToDashboard() {
+    window.location.href = '/dashboard';
+}
+
 function toggleSidebar(forceHide) {
     const sidebar = document.getElementById('thread-sidebar');
     const container = document.querySelector('.container');
@@ -371,7 +474,12 @@ window.addEventListener('DOMContentLoaded', function() {
 // --- Thread Sidebar Logic ---
 async function loadThreadListAndLast(selectLast = false) {
     // Fetch all thread IDs
-    const threadsRes = await fetch('/chat_history/threads');
+    const token = localStorage.getItem('authToken');
+    const threadsRes = await fetch('/chat_history/threads', {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
     const threadsData = await threadsRes.json();
     const threadIds = threadsData.threads || [];
     renderThreadList(threadIds);
@@ -392,13 +500,24 @@ async function loadThreadListAndLast(selectLast = false) {
 }
 
 async function loadThread(threadId, threadIds) {
-    const res = await fetch(`/chat_history/${threadId}`);
+    const token = localStorage.getItem('authToken');
+    const res = await fetch(`/chat_history/${threadId}`, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
     const data = await res.json();
     currentThreadId = threadId;
     renderThreadList(threadIds); // re-render to highlight
     renderMessages(data.messages);
     updateThreadTitle(threadIds);
     focusChatInput();
+    
+    // Ensure memory network stays loaded when switching threads
+    if (typeof window.refreshMemoryNetwork === 'function') {
+        console.log('🧠 Refreshing memory network for thread switch...');
+        window.refreshMemoryNetwork();
+    }
 }
 
 function renderThreadList(threadIds) {
@@ -457,8 +576,22 @@ function focusChatInput() {
 
 // Call focusChatInput on page load
 window.addEventListener('DOMContentLoaded', function() {
+    // Check if user is authenticated
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+        window.location.href = '/';
+        return;
+    }
+    
     loadThreadListAndLast();
     focusChatInput();
+    
+    // Initialize memory network on page load
+    if (typeof window.refreshMemoryNetwork === 'function') {
+        console.log('🧠 Initial memory network load...');
+        window.refreshMemoryNetwork();
+    }
+    
     const chatContainer = document.querySelector('.chat-container');
     chatContainer.addEventListener('click', function() {
         const sidebar = document.getElementById('thread-sidebar');

@@ -2,6 +2,7 @@
 
 from config import config
 from services.memory_search_service import memory_search_service
+from services.subscription_service import get_subscription_service
 
 class OpenAIService:
     """Service for OpenAI API interactions"""
@@ -9,24 +10,46 @@ class OpenAIService:
     def __init__(self):
         self.client = config.openai_client
     
-    def generate_response_with_memory(self, message, conversation_history):
-        """Generate AI response using OpenAI API with memory context"""
+    def generate_response_with_memory(self, message, conversation_history, user_id=None):
+        """Generate AI response using OpenAI API with user-specific memory context"""
         # Check if OpenAI client is available
         if not self.client:
             return "I apologize, but I encountered an error: OpenAI API key not configured. Please set OPENAI_API_KEY in your .env file.", []
+        
+        # Check user's subscription and usage limits
+        if user_id:
+            usage_check = get_subscription_service().can_user_chat(user_id)
+            if not usage_check['can_chat']:
+                return f"I apologize, but you've reached your monthly message limit ({usage_check['messages_limit']} messages). Please upgrade to Premium for unlimited messages.", []
         
         try:
             messages = [
                 {"role": "system", "content": "You are a helpful AI assistant. Use the following user memories to answer as personally and specifically as possible. If relevant, reference these memories directly in your answer. If no memories are relevant, answer as best you can.\n\n"}
             ]
             
-            # Search for relevant memories
-            memory_context = memory_search_service.search_memories_with_strict_filtering(message)
-            
-            # Inject memories into system prompt if found
-            if memory_context:
-                memory_text = memory_search_service.format_memories_for_injection(memory_context)
-                messages[0]["content"] += memory_text
+            # Search for relevant user-specific memories
+            if user_id:
+                from auth_system import user_memory_manager
+                user_memories = user_memory_manager.search_user_memories(user_id, message, 5)
+                
+                # Format user memories for injection
+                if user_memories:
+                    memory_text = "\n\nUSER MEMORIES (for context):\n"
+                    for memory in user_memories:
+                        memory_text += f"- {memory['content']}\n"
+                    memory_text += "\nUse these memories to personalize your response when relevant."
+                    messages[0]["content"] += memory_text
+                    memory_context = user_memories
+                else:
+                    memory_context = []
+            else:
+                # Fallback to global memory search
+                memory_context = memory_search_service.search_memories_with_strict_filtering(message)
+                
+                # Inject memories into system prompt if found
+                if memory_context:
+                    memory_text = memory_search_service.format_memories_for_injection(memory_context)
+                    messages[0]["content"] += memory_text
             
             # Add conversation history (excluding the current message to avoid duplication)
             for msg in conversation_history[:-1]:  # Exclude the last message (current user message)
@@ -36,9 +59,14 @@ class OpenAIService:
             # Add the current user message
             messages.append({"role": "user", "content": message})
             
+            # Get AI model based on user's subscription
+            ai_model = "gpt-4o-mini"  # Default for free users
+            if user_id:
+                ai_model = get_subscription_service().get_ai_model_for_user(user_id)
+            
             # Generate response
             response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model=ai_model,
                 messages=messages,
                 max_tokens=500,
                 temperature=0.7,
@@ -46,6 +74,10 @@ class OpenAIService:
                 frequency_penalty=0,
                 presence_penalty=0
             )
+            
+            # Track usage for the user
+            if user_id:
+                get_subscription_service().track_usage(user_id, messages_increment=1, api_calls_increment=1)
             
             return response.choices[0].message.content.strip(), memory_context
             

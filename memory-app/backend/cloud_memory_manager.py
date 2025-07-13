@@ -25,7 +25,7 @@ class CloudMemoryManager:
         """
         # Use hardcoded credentials
         self.supabase_url = supabase_url or "https://pquleppdqequfjwlcmbn.supabase.co"
-        self.supabase_key = supabase_key or "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBxdWxlcHBkcWVxdWZqd2xjbWJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEzOTE2NTMsImV4cCI6MjA2Njk2NzY1M30.39JM1SBx5boaUAxu6fEl3BCclR5KYWCtSbpnrBfwmBQ"
+        self.supabase_key = supabase_key or os.getenv('SUPABASE_ANON_KEY', '')
         
         if not self.supabase_url or not self.supabase_key:
             logger.warning("Supabase credentials not found. Please set SUPABASE_URL and SUPABASE_ANON_KEY environment variables.")

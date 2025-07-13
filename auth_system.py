@@ -316,11 +316,60 @@ class UserMemoryManager:
             return []
     
     def search_user_memories(self, user_id: str, query: str, limit: int = 10) -> list:
-        """Search memories for a specific user."""
+        """Search memories for a specific user using intelligent word-based search."""
         try:
-            # For now, use simple text search. In production, you'd use vector similarity
-            result = self.supabase.table('user_memories').select('*').eq('user_id', user_id).ilike('content', f'%{query}%').order('score', desc=True).limit(limit).execute()
-            return result.data if result.data else []
+            print(f"🔍 Searching user memories for: '{query}'")
+            
+            # Get all memories for the user
+            all_memories = self.get_user_memories(user_id, 1000)  # Get more for better search
+            if not all_memories:
+                return []
+            
+            # Common stop words to ignore in search
+            stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'my', 'your', 'his', 'her', 'its', 'our', 'their', 'what', 'when', 'where', 'why', 'how', 'who', 'which', 'about', 'think', 'makes', 'so', 'special'}
+            
+            # Split query into meaningful words (filter out stop words and short words)
+            query_words = [word.lower().strip('.,!?;:') for word in query.split() if len(word) > 2 and word.lower() not in stop_words]
+            
+            print(f"🔍 Meaningful search words: {query_words}")
+            
+            scored_memories = []
+            
+            for memory in all_memories:
+                content = memory.get('content', '').lower()
+                score = 0
+                
+                # Check for exact phrase match (highest score)
+                if query.lower() in content:
+                    score += 10
+                
+                # Check for meaningful word matches (higher weight)
+                for word in query_words:
+                    if word in content:
+                        score += 5  # Increased weight for meaningful words
+                
+                # Also check all words (lower weight) for comprehensive search
+                all_words = [word.lower().strip('.,!?;:') for word in query.split()]
+                for word in all_words:
+                    if word not in query_words and word in content:  # Don't double-count
+                        score += 1
+                
+                # Only include memories with matches
+                if score > 0:
+                    memory_copy = memory.copy()
+                    memory_copy['search_score'] = score
+                    scored_memories.append(memory_copy)
+            
+            # Sort by score (highest first) and return top results
+            scored_memories.sort(key=lambda x: x['search_score'], reverse=True)
+            results = scored_memories[:limit]
+            
+            print(f"🔍 Found {len(results)} matching memories:")
+            for i, result in enumerate(results):
+                print(f"  {i+1}. '{result['content'][:50]}...' (score: {result['search_score']})")
+            
+            return results
+            
         except Exception as e:
             print(f"Error searching memories for user {user_id}: {e}")
             return []
@@ -341,6 +390,21 @@ class UserMemoryManager:
         except Exception as e:
             print(f"Error updating memory count for user {user_id}: {e}")
 
-# Global auth system instance
-auth_system = MonetaAuthSystem()
-user_memory_manager = UserMemoryManager(auth_system) 
+# Global auth system instance (lazy initialization)
+auth_system = None
+user_memory_manager = None
+
+def get_auth_system():
+    """Get or create the global auth system instance."""
+    global auth_system, user_memory_manager
+    if auth_system is None:
+        auth_system = MonetaAuthSystem()
+        user_memory_manager = UserMemoryManager(auth_system)
+    return auth_system, user_memory_manager
+
+# Initialize immediately for backward compatibility
+try:
+    auth_system, user_memory_manager = get_auth_system()
+except Exception as e:
+    print(f"⚠️  Auth system initialization delayed: {e}")
+    # Will be initialized when first accessed 

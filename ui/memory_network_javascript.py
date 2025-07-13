@@ -27,6 +27,17 @@ MEMORY_NETWORK_JAVASCRIPT = '''
     let sessionMemoryIds = new Set();
     let newMemoryPollingInterval = null;
     
+    // Handle authentication errors
+    function handleAuthError(response) {
+        if (response.status === 401) {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('user');
+            window.location.href = '/';
+            return true;
+        }
+        return false;
+    }
+    
     // Live score update system
     let scoreUpdateInterval = null;
     let lastScoreUpdateTime = 0;
@@ -134,8 +145,21 @@ MEMORY_NETWORK_JAVASCRIPT = '''
     }
 
     async function checkForScoreUpdates() {
+        // Don't check if not authenticated
+        if (!isAuthenticated()) {
+            return;
+        }
+        
         try {
-            const response = await fetch('/score-updates');
+            const token = localStorage.getItem('authToken');
+            const response = await fetch('/score-updates', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (handleAuthError(response)) return;
+            
             const data = await response.json();
             
             if (data.success && data.updates) {
@@ -280,12 +304,16 @@ MEMORY_NETWORK_JAVASCRIPT = '''
                 button.disabled = true;
             }
             
+            const token = localStorage.getItem('authToken');
             const response = await fetch('/save-scores', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
                 }
             });
+            
+            if (handleAuthError(response)) return;
             
             const data = await response.json();
             
@@ -308,8 +336,20 @@ MEMORY_NETWORK_JAVASCRIPT = '''
         }
     }
 
+    // Check if user is authenticated before making any API calls
+    function isAuthenticated() {
+        const token = localStorage.getItem('authToken');
+        return token !== null && token !== '';
+    }
+    
     // Memory Network Functions
     function initializeMemoryNetwork() {
+        // Don't initialize if not authenticated
+        if (!isAuthenticated()) {
+            console.log('🔒 User not authenticated, skipping memory network initialization');
+            return;
+        }
+        
         const container = document.getElementById('memory-network');
         
         // Clear any loading text first
@@ -750,9 +790,32 @@ MEMORY_NETWORK_JAVASCRIPT = '''
     }
 
     async function loadMemoryNetwork() {
+        // Don't load if not authenticated
+        if (!isAuthenticated()) {
+            console.log('🔒 User not authenticated, skipping memory network load');
+            return;
+        }
+        
         try {
             const threshold = parseFloat(document.getElementById('threshold-slider')?.value || currentThreshold);
-            const response = await fetch(`/memory-network?threshold=${threshold}`);
+            
+            // Get authentication token from localStorage
+            const token = localStorage.getItem('authToken');
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            // Add authentication header if token exists
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            
+            const response = await fetch(`/memory-network?threshold=${threshold}`, {
+                headers: headers
+            });
+            
+            if (handleAuthError(response)) return;
+            
             const data = await response.json();
             
             // Use incremental update instead of complete replacement
@@ -1050,9 +1113,16 @@ MEMORY_NETWORK_JAVASCRIPT = '''
             console.log('🔧 DEBUG: ========== POLLING /new-memories ENDPOINT ==========');
             console.log('🔧 DEBUG: Making GET request to /new-memories (NOT /end_thread)');
             
-            const response = await fetch('/new-memories');
+            const token = localStorage.getItem('authToken');
+            const response = await fetch('/new-memories', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
             console.log('🔧 DEBUG: /new-memories response status:', response.status);
             console.log('🔧 DEBUG: /new-memories response headers:', [...response.headers.entries()]);
+            
+            if (handleAuthError(response)) return;
             
             const data = await response.json();
             console.log('🔧 DEBUG: /new-memories response data:', JSON.stringify(data, null, 2));
@@ -1633,7 +1703,19 @@ MEMORY_NETWORK_JAVASCRIPT = '''
     }
 
     // Initialize memory network after page load
-    setTimeout(() => {
+    function initializeMemorySystem() {
+        console.log('🔧 Memory System Initialization Starting...');
+        
+        // Check if user is authenticated
+        if (!isAuthenticated()) {
+            console.log('🔒 User not authenticated, waiting for authentication...');
+            // Retry initialization after a short delay if not authenticated
+            setTimeout(initializeMemorySystem, 500);
+            return;
+        }
+        
+        console.log('✅ User authenticated, initializing memory network...');
+        
         initializeMemoryNetwork();
         loadMemoryNetwork();
         
@@ -1645,6 +1727,30 @@ MEMORY_NETWORK_JAVASCRIPT = '''
         console.log('💡 Use the refresh button or enable auto-refresh if needed.');
         console.log('🚀 Real-time memory updates enabled via immediate temporary nodes!');
         console.log('📊 Live score updates available - click "Enable Live Scores" to activate!');
-    }, 1000);
+    }
+    
+    // Initialize on DOM load and also when authentication state changes
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeMemorySystem);
+    } else {
+        // DOM already loaded
+        initializeMemorySystem();
+    }
+    
+    // Also initialize when the page becomes visible (handles tab switches, navigation)
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden && isAuthenticated()) {
+            console.log('🔧 Page became visible, refreshing memory network...');
+            loadMemoryNetwork();
+        }
+    });
+    
+    // Add a global function that can be called when switching between chat threads
+    window.refreshMemoryNetwork = function() {
+        console.log('🔧 Manual memory network refresh triggered...');
+        if (isAuthenticated()) {
+            loadMemoryNetwork();
+        }
+    };
     </script>
     ''' 

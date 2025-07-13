@@ -126,9 +126,9 @@ CHAT_INTERFACE_TEMPLATE = '''
         }
 
         .thread-sidebar {
-            width: 250px;
+            width: 500px;
             min-width: 12px;
-            max-width: 220px;
+            max-width: 500px;
             height: 100vh;
             background: rgba(255,255,255,0.10);
             backdrop-filter: blur(18px);
@@ -236,7 +236,7 @@ CHAT_INTERFACE_TEMPLATE = '''
         .chat-container {
             position: fixed;
             top: 20px;
-            left: 250px;
+            left: 500px;
             bottom: 20px;
             width: 500px;
             height: calc(100vh - 40px);
@@ -611,7 +611,7 @@ CHAT_INTERFACE_TEMPLATE = '''
             z-index: 1000;
         }
 
-        .new-thread-btn, .end-thread-btn {
+        .new-thread-btn, .end-thread-btn, .dashboard-btn {
             background: rgba(255, 255, 255, 0.08);
             backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.2);
@@ -629,11 +629,11 @@ CHAT_INTERFACE_TEMPLATE = '''
             position: relative;
             overflow: hidden;
             white-space: nowrap;
-            max-width: 7vw;
-            min-width: 70px;
+            max-width: 120px;
+            min-width: 100px;
         }
 
-        .new-thread-btn::before, .end-thread-btn::before {
+        .new-thread-btn::before, .end-thread-btn::before, .dashboard-btn::before {
             content: '';
             position: absolute;
             top: 0;
@@ -647,7 +647,7 @@ CHAT_INTERFACE_TEMPLATE = '''
             border-radius: 16px;
         }
 
-        .new-thread-btn:hover, .end-thread-btn:hover {
+        .new-thread-btn:hover, .end-thread-btn:hover, .dashboard-btn:hover {
             background: rgba(255, 255, 255, 0.12);
             border-color: rgba(255, 255, 255, 0.3);
             color: rgba(255, 255, 255, 1);
@@ -659,7 +659,7 @@ CHAT_INTERFACE_TEMPLATE = '''
             backdrop-filter: blur(24px);
         }
 
-        .new-thread-btn:hover::before, .end-thread-btn:hover::before {
+        .new-thread-btn:hover::before, .end-thread-btn:hover::before, .dashboard-btn:hover::before {
             opacity: 1;
         }
 
@@ -667,6 +667,13 @@ CHAT_INTERFACE_TEMPLATE = '''
             box-shadow: 
                 0 8px 24px rgba(168, 85, 247, 0.3),
                 0 0 0 1px rgba(168, 85, 247, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+
+        .dashboard-btn:hover {
+            box-shadow: 
+                0 8px 24px rgba(255, 215, 0, 0.3),
+                0 0 0 1px rgba(255, 215, 0, 0.2),
                 inset 0 1px 0 rgba(255, 255, 255, 0.2);
         }
 
@@ -724,7 +731,7 @@ CHAT_INTERFACE_TEMPLATE = '''
                 gap: 8px;
             }
             
-            .new-thread-btn, .end-thread-btn {
+            .new-thread-btn, .end-thread-btn, .dashboard-btn {
                 max-width: none;
                 min-width: 80px;
                 padding: 8px 12px;
@@ -813,10 +820,11 @@ CHAT_INTERFACE_TEMPLATE = '''
             right: 0;
             bottom: 18px;
             display: flex;
-            gap: 12px;
+            gap: 8px;
             justify-content: center;
-            padding: 0 12px;
+            padding: 0 8px;
             z-index: 1201;
+            flex-wrap: wrap;
         }
         .thread-sidebar.hidden .sidebar-controls {
             display: none;
@@ -835,6 +843,7 @@ CHAT_INTERFACE_TEMPLATE = '''
             <div class="sidebar-controls">
                 <button class="new-thread-btn" onclick="newThread()">New</button>
                 <button class="end-thread-btn" onclick="endThread()">💾 Save</button>
+                <button class="dashboard-btn" onclick="goToDashboard()">🏠 Dashboard</button>
             </div>
         </div>
         <div class="main-content">

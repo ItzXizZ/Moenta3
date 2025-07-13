@@ -22,6 +22,9 @@ class Config:
         # Use Render's PORT environment variable if available, otherwise default to 4000
         self.port = int(os.getenv('PORT', os.getenv('FLASK_PORT', '4000')))
         
+        # Authentication Configuration
+        self.jwt_secret = os.getenv('JWT_SECRET', 'your-secret-key-here')
+        
         # Memory system configuration
         self.memory_available = False
         self.memory_manager = None

@@ -98,7 +98,7 @@ class ConversationService:
         """Get all messages from a thread"""
         return self.chat_threads.get(thread_id, [])
     
-    def process_message(self, message, thread_id, request_id=None):
+    def process_message(self, message, thread_id, request_id=None, user_id=None):
         """Process a user message and generate AI response"""
         # Clean up old requests
         self.cleanup_old_requests()
@@ -116,10 +116,11 @@ class ConversationService:
         # Add user message to thread
         user_message = self.add_message_to_thread(thread_id, message, 'user')
         
-        # Generate AI response using OpenAI API with memory context
+        # Generate AI response using OpenAI API with user-specific memory context
         ai_response, memory_context = openai_service.generate_response_with_memory(
             message, 
-            self.chat_threads[thread_id]
+            self.chat_threads[thread_id],
+            user_id
         )
         
         # Add AI response to thread
@@ -127,7 +128,7 @@ class ConversationService:
         
         return thread_id, ai_response, memory_context, None
     
-    def end_thread_and_extract_memories(self, thread_id):
+    def end_thread_and_extract_memories(self, thread_id, user_id=None):
         """Extract memories from a conversation thread when it ends"""
         print(f"🔧 DEBUG: end_thread_and_extract_memories called for thread: {thread_id}")
         
@@ -148,73 +149,26 @@ class ConversationService:
             print(f"🔧 DEBUG: Memory extraction exception: {type(e).__name__}: {e}")
             extracted_memories = []
         
-        # Add extracted memories to the memory system
+        # Add extracted memories to user-specific database
         successful_adds = 0
-        if extracted_memories:
-            print(f"💾 Extracting {len(extracted_memories)} memories from conversation...")
-            print(f"🔧 DEBUG: Memory manager available: {config.memory_available}")
-            print(f"🔧 DEBUG: Memory manager object: {config.memory_manager}")
+        if extracted_memories and user_id:
+            print(f"💾 Extracting {len(extracted_memories)} memories for user {user_id}...")
             
-            # Try local memory manager first
-            if config.memory_available and config.memory_manager:
-                for memory_text in extracted_memories:
-                    try:
-                        print(f"🔧 DEBUG: Adding memory: {memory_text[:50]}...")
-                        new_memory = config.memory_manager.add_memory(memory_text, ["conversation", "auto-extracted"])
-                        print(f"🔧 DEBUG: New memory object: {new_memory}")
-                        print(f"   ✅ Added locally: {memory_text}")
-                        successful_adds += 1
-                        
-                        # Add new memory to session queue for real-time network update
-                        if new_memory:
-                            memory_data = {
-                                'id': new_memory['id'],
-                                'content': new_memory['content'],
-                                'score': new_memory.get('score', 0),
-                                'tags': new_memory.get('tags', []),
-                                'created': new_memory.get('created', '')
-                            }
-                            print(f"🔧 DEBUG: Memory data prepared: {memory_data}")
-                            
-                            with config.session_new_memories_lock:
-                                config.session_new_memories.append(memory_data)
-                                print(f"🔧 DEBUG: Session queue size after add: {len(config.session_new_memories)}")
-                            
-                            print(f"🌐 Queued new memory for network: {memory_data['id']}")
-                        else:
-                            print(f"🔧 DEBUG: new_memory is None/empty!")
-                    except Exception as e:
-                        print(f"   ❌ Failed to add locally: {memory_text} - {e}")
-                        print(f"🔧 DEBUG: Exception details: {type(e).__name__}: {e}")
-            else:
-                print(f"🔧 DEBUG: Memory system not available - config.memory_available: {config.memory_available}, config.memory_manager: {config.memory_manager}")
-            
-            # Also try to add via API to ensure synchronization
-            try:
-                for memory_text in extracted_memories:
-                    api_response = requests.post(
-                        'http://localhost:5000/memories', 
-                        json={
-                            'content': memory_text, 
-                            'tags': ['conversation', 'auto-extracted']
-                        }, 
-                        timeout=5
-                    )
-                    if api_response.status_code == 201:
-                        print(f"   🔄 Synced to API: {memory_text}")
-                    else:
-                        print(f"   ⚠️ API sync failed for: {memory_text}")
-            except Exception as e:
-                print(f"   ⚠️ API synchronization failed: {e}")
-            
-            # Force local reload if we have memory manager
-            if config.memory_available and config.memory_manager:
+            # Add memories to user's personal database
+            from auth_system import user_memory_manager
+            for memory_text in extracted_memories:
                 try:
-                    time.sleep(1)  # Give file operations time to complete
-                    config.memory_manager.reload_from_disk()
-                    print(f"💾 Reloaded memory manager after adding {successful_adds} memories")
+                    print(f"🔧 DEBUG: Adding user memory: {memory_text[:50]}...")
+                    result = user_memory_manager.add_memory_for_user(user_id, memory_text, ["conversation", "auto-extracted"])
+                    if result['success']:
+                        print(f"   ✅ Added to user database: {memory_text}")
+                        successful_adds += 1
+                    else:
+                        print(f"   ❌ Failed to add to user database: {memory_text} - {result.get('error')}")
                 except Exception as e:
-                    print(f"⚠️ Warning: Could not reload memory manager: {e}")
+                    print(f"   ❌ Exception adding user memory: {memory_text} - {e}")
+        elif not user_id:
+            print("🔧 DEBUG: No user_id provided, cannot save user-specific memories")
         
         # DON'T clean up the thread - keep it active so user can continue chatting
         # if thread_id in self.chat_threads:

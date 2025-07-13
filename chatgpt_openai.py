@@ -1024,7 +1024,16 @@ HTML_TEMPLATE = '''
             memoriesHtml += `<div class="memory-context-content" id="${memoryId}">`;
             if (memoryContext && memoryContext.length > 0) {
                 memoryContext.forEach(memory => {
-                    memoriesHtml += `<div class="memory-item">${memory.memory.content}<span class="memory-score">(Score: ${memory.relevance_score.toFixed(2)})</span></div>`;
+                    // Skip if memory is null or undefined
+                    if (!memory) {
+                        console.log('🔧 DEBUG: ⚠️ Skipping null/undefined memory');
+                        return;
+                    }
+                    
+                    // Handle both user-specific memories (direct) and global memories (nested)
+                    const content = memory.content || memory.memory?.content || 'Unknown memory content';
+                    const score = memory.relevance_score || memory.score || 0;
+                    memoriesHtml += `<div class="memory-item">${content}<span class="memory-score">(Score: ${score.toFixed ? score.toFixed(2) : score})</span></div>`;
                 });
             } else {
                 memoriesHtml += '<div class="memory-item">No relevant memories were injected for this prompt.</div>';
